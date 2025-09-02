@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   # Zookeeper for Kafka
@@ -14,6 +13,12 @@ services:
     volumes:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-logs:/var/lib/zookeeper/log
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Kafka
   kafka:
@@ -21,7 +26,8 @@ services:
     hostname: kafka
     container_name: kafka
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
     ports:
       - "9092:9092"
       - "9101:9101"
@@ -30,6 +36,7 @@ services:
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -38,6 +45,13 @@ services:
       KAFKA_JMX_OPTS: -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Djava.rmi.server.hostname=kafka -Dcom.sun.management.jmxremote.rmi.port=9101
     volumes:
       - kafka-data:/var/lib/kafka/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # PostgreSQL Database
   postgres:
@@ -51,6 +65,13 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Redis for Airflow
   redis:
@@ -58,6 +79,12 @@ services:
     container_name: redis
     expose:
       - 6379
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # Airflow Database Init
   airflow-init:
@@ -66,8 +93,10 @@ services:
       dockerfile: docker/Dockerfile.airflow
     container_name: airflow-init
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - AIRFLOW_UID=${AIRFLOW_UID}
       - AIRFLOW__CORE__EXECUTOR=${AIRFLOW__CORE__EXECUTOR}
@@ -83,6 +112,7 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+    restart: "no"
 
   # Airflow Webserver
   airflow-webserver:
@@ -91,7 +121,8 @@ services:
       dockerfile: docker/Dockerfile.airflow
     container_name: airflow-webserver
     depends_on:
-      - airflow-init
+      airflow-init:
+        condition: service_completed_successfully
     environment:
       - AIRFLOW_UID=${AIRFLOW_UID}
       - AIRFLOW__CORE__EXECUTOR=${AIRFLOW__CORE__EXECUTOR}
@@ -105,6 +136,13 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # Airflow Scheduler
   airflow-scheduler:
@@ -113,7 +151,8 @@ services:
       dockerfile: docker/Dockerfile.airflow
     container_name: airflow-scheduler
     depends_on:
-      - airflow-init
+      airflow-init:
+        condition: service_completed_successfully
     environment:
       - AIRFLOW_UID=${AIRFLOW_UID}
       - AIRFLOW__CORE__EXECUTOR=${AIRFLOW__CORE__EXECUTOR}
@@ -125,6 +164,13 @@ services:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # TfL Data Producer Service
   tfl-producer:
@@ -133,19 +179,22 @@ services:
       dockerfile: docker/Dockerfile.python
     container_name: tfl-producer
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
       - TFL_API_KEY=${TFL_API_KEY}
       - TFL_BASE_URL=${TFL_BASE_URL}
-      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    command: ["sh", "-c", "sleep 60 && python services/tfl-producer/producer.py"]
+    command: ["sh", "-c", "sleep 30 && python services/tfl-producer/producer.py"]
     volumes:
       - .:/app
+    restart: unless-stopped
 
   # Data Consumer Service
   data-consumer:
@@ -154,24 +203,28 @@ services:
       dockerfile: docker/Dockerfile.python
     container_name: data-consumer
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
-      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - POSTGRES_HOST=${POSTGRES_HOST}
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    command: ["sh", "-c", "sleep 60 && python services/data-consumer/consumer.py"]
+    command: ["sh", "-c", "sleep 30 && python services/data-consumer/consumer.py"]
     volumes:
       - .:/app
+    restart: unless-stopped
 
   # Grafana
   grafana:
     image: grafana/grafana:10.1.0
     container_name: grafana
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "3000:3000"
     environment:
@@ -182,6 +235,13 @@ services:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
       - ./grafana/dashboards:/var/lib/grafana/dashboards
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 volumes:
   postgres-data:

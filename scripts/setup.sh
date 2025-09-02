@@ -1,5 +1,3 @@
-98129496b325   confluentinc/cp-kafka:7.4.0   "/etc/confluent/dock…"   3 days ago   Up 41 minutes   0.0.0.0:9092->9092/tcp, [::]:9092->9092/tcp, 0.0.0.0:9101->9101/tcp, [::]:9101->9101/tcp   kafka
-98129496b325   confluentinc/cp-kafka:7.4.0   "/etc/confluent/dock…"   3 days ago   Up 41 minutes   0.0.0.0:9092->9092/tcp, [::]:9092->9092/tcp, 0.0.0.0:9101->9101/tcp, [::]:9101->9101/tcp   kafka
 #!/bin/bash
 
 # Real-Time Public Transport Analytics Pipeline Setup Script
@@ -62,28 +60,118 @@ fi
 echo "🔨 Building Docker images..."
 docker-compose build
 
-echo "🔧 Setting up migration permissions..."
+echo "🔧 Setting up script permissions..."
 chmod +x services/data-consumer/migrate.py
+chmod +x scripts/health-check.sh
 
-echo "🚀 Starting services..."
-docker-compose up -d
+# Function to wait for service health
+wait_for_service() {
+    local service=$1
+    local max_attempts=$2
+    local attempt=1
+    
+    echo "⏳ Waiting for $service to be healthy..."
+    
+    while [ $attempt -le $max_attempts ]; do
+        if docker-compose ps $service | grep -q "(healthy)"; then
+            echo "✅ $service is healthy"
+            return 0
+        fi
+        
+        echo "   Attempt $attempt/$max_attempts - $service not ready yet..."
+        sleep 10
+        attempt=$((attempt + 1))
+    done
+    
+    echo "❌ $service failed to become healthy after $max_attempts attempts"
+    echo "📋 Service logs:"
+    docker-compose logs --tail=20 $service
+    return 1
+}
 
-echo "⏳ Waiting for services to be ready..."
-sleep 90
+# Function to check if all containers are running
+check_all_services() {
+    echo "🔍 Checking service status..."
+    
+    local failed_services=()
+    local services=("zookeeper" "kafka" "postgres" "redis" "airflow-init" "airflow-webserver" "airflow-scheduler" "tfl-producer" "data-consumer" "grafana")
+    
+    for service in "${services[@]}"; do
+        if ! docker-compose ps $service | grep -q "Up"; then
+            failed_services+=("$service")
+        fi
+    done
+    
+    if [ ${#failed_services[@]} -eq 0 ]; then
+        echo "✅ All services are running"
+        return 0
+    else
+        echo "❌ Failed services: ${failed_services[*]}"
+        return 1
+    fi
+}
 
-echo "🗄️ Setting up database migrations..."
-# Ensure alembic versions directory exists
-docker-compose exec -T data-consumer mkdir -p services/data-consumer/alembic/versions
+echo "🧹 Cleaning up any existing containers..."
+docker-compose down -v
 
-# Check if migration files exist, create initial migration if not
-MIGRATION_COUNT=$(docker-compose exec -T data-consumer find services/data-consumer/alembic/versions -name "*.py" | wc -l)
-if [ "$MIGRATION_COUNT" -eq 0 ]; then
-    echo "📝 Creating initial migration from models..."
-    docker-compose exec -T data-consumer python services/data-consumer/migrate.py create
+echo "🚀 Starting core infrastructure services..."
+docker-compose up -d zookeeper postgres redis
+
+# Wait for core services
+wait_for_service "zookeeper" 12
+wait_for_service "postgres" 12
+wait_for_service "redis" 12
+
+echo "🚀 Starting Kafka..."
+docker-compose up -d kafka
+wait_for_service "kafka" 15
+
+echo "🚀 Starting Airflow initialization..."
+docker-compose up -d airflow-init
+
+# Wait for airflow-init to complete
+echo "⏳ Waiting for Airflow initialization to complete..."
+while docker-compose ps airflow-init | grep -q "Up"; do
+    sleep 5
+done
+
+if docker-compose ps airflow-init | grep -q "Exited (0)"; then
+    echo "✅ Airflow initialization completed successfully"
+else
+    echo "❌ Airflow initialization failed"
+    docker-compose logs airflow-init
+    exit 1
 fi
 
-echo "🏃 Running database migrations..."
-docker-compose exec -T data-consumer python services/data-consumer/migrate.py
+echo "🚀 Starting remaining services..."
+docker-compose up -d
+
+echo "⏳ Waiting for all services to be ready..."
+sleep 30
+
+# Final health check
+if check_all_services; then
+    echo "🗄️ Setting up database migrations..."
+    
+    # Wait a bit more for data-consumer to be fully ready
+    sleep 15
+    
+    # Ensure alembic versions directory exists
+    docker-compose exec -T data-consumer mkdir -p services/data-consumer/alembic/versions
+    
+    # Check if migration files exist, create initial migration if not
+    MIGRATION_COUNT=$(docker-compose exec -T data-consumer find services/data-consumer/alembic/versions -name "*.py" | wc -l)
+    if [ "$MIGRATION_COUNT" -eq 0 ]; then
+        echo "📝 Creating initial migration from models..."
+        docker-compose exec -T data-consumer python services/data-consumer/migrate.py create
+    fi
+    
+    echo "🏃 Running database migrations..."
+    docker-compose exec -T data-consumer python services/data-consumer/migrate.py
+else
+    echo "❌ Some services failed to start. Check logs with: docker-compose logs"
+    exit 1
+fi
 
 echo ""
 echo "🎉 Setup complete!"
@@ -97,5 +185,9 @@ echo "   View logs: make logs"
 echo "   Stop services: make stop"
 echo "   Restart services: make restart"
 echo "   Clean up: make clean"
+echo "   Health check: ./scripts/health-check.sh"
 echo ""
 echo "📖 For more commands, run: make help"
+echo ""
+echo "🔍 Verifying data flow..."
+./scripts/health-check.sh
