@@ -2,9 +2,8 @@
 Database configuration and utilities for the transport analytics pipeline
 """
 import os
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.schema import CreateSchema
 from dotenv import load_dotenv
 from models import Base
 import logging
@@ -24,25 +23,10 @@ class DatabaseManager:
         self.engine = create_engine(self.db_url, pool_pre_ping=True)
         self.SessionLocal = sessionmaker(bind=self.engine)
     
-    def create_schemas(self):
-        """Create database schemas if they don't exist"""
-        try:
-            with self.engine.begin() as conn:
-                conn.execute(text("CREATE SCHEMA IF NOT EXISTS raw"))
-                conn.execute(text("CREATE SCHEMA IF NOT EXISTS staging"))
-                conn.execute(text("CREATE SCHEMA IF NOT EXISTS analytics"))
-            logger.info("Database schemas created successfully")
-        except Exception as e:
-            logger.error(f"Error creating schemas: {str(e)}")
-            raise
-    
     def create_tables(self):
         """Create all tables defined in models"""
         try:
-            # First create schemas
-            self.create_schemas()
-            
-            # Then create all tables
+            # Create all tables in public schema
             Base.metadata.create_all(bind=self.engine)
             logger.info("Database tables created successfully")
         except Exception as e:

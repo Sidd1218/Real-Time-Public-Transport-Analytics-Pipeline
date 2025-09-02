@@ -5,7 +5,6 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, UniqueConstraint, Index
 from sqlalchemy.types import Numeric
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.schema import CreateSchema
 from sqlalchemy.sql import func
 
 Base = declarative_base()
@@ -15,7 +14,6 @@ class BusArrival(Base):
     __tablename__ = 'bus_arrivals'
     __table_args__ = (
         Index('idx_bus_arrivals_station_time', 'station_id', 'timestamp'),
-        {'schema': 'raw'}
     )
     
     id = Column(Integer, primary_key=True)
@@ -39,7 +37,6 @@ class TubeArrival(Base):
     __tablename__ = 'tube_arrivals'
     __table_args__ = (
         Index('idx_tube_arrivals_station_time', 'station_id', 'timestamp'),
-        {'schema': 'raw'}
     )
     
     id = Column(Integer, primary_key=True)
@@ -63,7 +60,6 @@ class LineStatus(Base):
     __tablename__ = 'line_status'
     __table_args__ = (
         Index('idx_line_status_time', 'timestamp'),
-        {'schema': 'raw'}
     )
     
     id = Column(Integer, primary_key=True)
@@ -79,9 +75,6 @@ class LineStatus(Base):
 
 class BikePoint(Base):
     __tablename__ = 'bike_points'
-    __table_args__ = (
-        {'schema': 'raw'},
-    )
     
     id = Column(Integer, primary_key=True)
     bike_point_id = Column(String(50))
@@ -103,7 +96,6 @@ class StagingArrival(Base):
     __table_args__ = (
         Index('idx_staging_arrivals_partition', 'date_partition', 'hour_partition'),
         Index('idx_staging_arrivals_created', 'created_at'),
-        {'schema': 'staging'},
     )
     
     id = Column(Integer, primary_key=True)
@@ -124,7 +116,6 @@ class StagingServiceStatus(Base):
     __tablename__ = 'service_status'
     __table_args__ = (
         Index('idx_staging_status_created', 'created_at'),
-        {'schema': 'staging'},
     )
     
     id = Column(Integer, primary_key=True)
@@ -144,7 +135,6 @@ class HourlyArrival(Base):
         UniqueConstraint('date_hour', 'transport_mode', 'line_name', 'station_name', 
                         name='unique_hourly_arrivals'),
         Index('idx_analytics_hourly_date', 'date_hour'),
-        {'schema': 'analytics'},
     )
     
     id = Column(Integer, primary_key=True)
@@ -164,7 +154,6 @@ class DailyServicePerformance(Base):
         UniqueConstraint('date_partition', 'transport_mode', 'line_name', 
                         name='unique_daily_performance'),
         Index('idx_analytics_daily_date', 'date_partition'),
-        {'schema': 'analytics'},
     )
     
     id = Column(Integer, primary_key=True)
