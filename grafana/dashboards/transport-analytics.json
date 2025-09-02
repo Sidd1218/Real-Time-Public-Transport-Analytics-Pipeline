@@ -18,14 +18,14 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": null,
+  "id": 1,
   "links": [],
   "liveNow": false,
   "panels": [
     {
       "datasource": {
         "type": "postgres",
-        "uid": "postgres"
+        "uid": "PCC52D03280B7034C"
       },
       "fieldConfig": {
         "defaults": {
@@ -33,6 +33,8 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
@@ -42,8 +44,10 @@
             "hideFrom": {
               "legend": false,
               "tooltip": false,
-              "vis": false
+              "vis": false,
+              "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -88,7 +92,8 @@
         "legend": {
           "calcs": [],
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
           "mode": "single",
@@ -101,11 +106,12 @@
             "type": "postgres",
             "uid": "postgres"
           },
+          "editorMode": "code",
           "format": "time_series",
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  DATE_TRUNC('minute', timestamp) as time,\n  COUNT(*) as arrivals\nFROM raw.bus_arrivals\nWHERE timestamp >= NOW() - INTERVAL '1 hour'\nGROUP BY DATE_TRUNC('minute', timestamp)\nORDER BY time",
+          "rawSql": "SELECT\n  DATE_TRUNC('minute', timestamp) as time,\n  COUNT(*) as arrivals\nFROM bus_arrivals\nWHERE timestamp >= NOW() - INTERVAL '1 hour'\nGROUP BY DATE_TRUNC('minute', timestamp)\nORDER BY time",
           "refId": "A",
           "select": [
             [
@@ -117,6 +123,23 @@
               }
             ]
           ],
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          },
           "timeColumn": "time",
           "where": [
             {
@@ -133,7 +156,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "postgres"
+        "uid": "PCC52D03280B7034C"
       },
       "fieldConfig": {
         "defaults": {
@@ -141,6 +164,8 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
@@ -150,8 +175,10 @@
             "hideFrom": {
               "legend": false,
               "tooltip": false,
-              "vis": false
+              "vis": false,
+              "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
             "lineWidth": 1,
             "pointSize": 5,
@@ -196,7 +223,8 @@
         "legend": {
           "calcs": [],
           "displayMode": "list",
-          "placement": "bottom"
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
           "mode": "single",
@@ -209,11 +237,12 @@
             "type": "postgres",
             "uid": "postgres"
           },
+          "editorMode": "code",
           "format": "time_series",
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  DATE_TRUNC('minute', timestamp) as time,\n  COUNT(*) as arrivals\nFROM raw.tube_arrivals\nWHERE timestamp >= NOW() - INTERVAL '1 hour'\nGROUP BY DATE_TRUNC('minute', timestamp)\nORDER BY time",
+          "rawSql": "SELECT\n  DATE_TRUNC('minute', timestamp) as time,\n  COUNT(*) as arrivals\nFROM tube_arrivals\nWHERE timestamp >= NOW() - INTERVAL '1 hour'\nGROUP BY DATE_TRUNC('minute', timestamp)\nORDER BY time",
           "refId": "A",
           "select": [
             [
@@ -225,6 +254,23 @@
               }
             ]
           ],
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          },
           "timeColumn": "time",
           "where": [
             {
@@ -241,7 +287,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "postgres"
+        "uid": "PCC52D03280B7034C"
       },
       "fieldConfig": {
         "defaults": {
@@ -293,11 +339,12 @@
             "type": "postgres",
             "uid": "postgres"
           },
+          "editorMode": "code",
           "format": "table",
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) as total_bus_arrivals\nFROM raw.bus_arrivals\nWHERE timestamp >= NOW() - INTERVAL '1 hour'",
+          "rawSql": "SELECT COUNT(*) as total_bus_arrivals\nFROM bus_arrivals\nWHERE timestamp >= NOW() - INTERVAL '1 hour'",
           "refId": "A",
           "select": [
             [
@@ -309,6 +356,23 @@
               }
             ]
           ],
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          },
           "timeColumn": "time",
           "where": [
             {
@@ -325,7 +389,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "postgres"
+        "uid": "PCC52D03280B7034C"
       },
       "fieldConfig": {
         "defaults": {
@@ -377,11 +441,12 @@
             "type": "postgres",
             "uid": "postgres"
           },
+          "editorMode": "code",
           "format": "table",
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) as total_tube_arrivals\nFROM raw.tube_arrivals\nWHERE timestamp >= NOW() - INTERVAL '1 hour'",
+          "rawSql": "SELECT COUNT(*) as total_tube_arrivals\nFROM tube_arrivals\nWHERE timestamp >= NOW() - INTERVAL '1 hour'",
           "refId": "A",
           "select": [
             [
@@ -393,6 +458,23 @@
               }
             ]
           ],
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          },
           "timeColumn": "time",
           "where": [
             {
@@ -409,7 +491,7 @@
     {
       "datasource": {
         "type": "postgres",
-        "uid": "postgres"
+        "uid": "PCC52D03280B7034C"
       },
       "fieldConfig": {
         "defaults": {
@@ -476,11 +558,12 @@
             "type": "postgres",
             "uid": "postgres"
           },
+          "editorMode": "code",
           "format": "table",
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT \n  COUNT(DISTINCT line_id) as lines_with_disruptions\nFROM raw.line_status\nWHERE timestamp >= NOW() - INTERVAL '1 hour'\n  AND status_severity > 10",
+          "rawSql": "SELECT \n  COUNT(DISTINCT line_id) as lines_with_disruptions\nFROM line_status\nWHERE timestamp >= NOW() - INTERVAL '1 hour'\n  AND status_severity > 10",
           "refId": "A",
           "select": [
             [
@@ -492,6 +575,23 @@
               }
             ]
           ],
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          },
           "timeColumn": "time",
           "where": [
             {
@@ -518,7 +618,7 @@
     "list": []
   },
   "time": {
-    "from": "now-1h",
+    "from": "now-24h",
     "to": "now"
   },
   "timepicker": {},
