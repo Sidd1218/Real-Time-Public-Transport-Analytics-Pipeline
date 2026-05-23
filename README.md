@@ -55,36 +55,44 @@ make clean         # Clean up containers and volumes
 
 ## Services
 
-- **Kafka**: Message streaming (ports 9092, 2181)
+- **Zookeeper / Kafka**: Message streaming (ports 2181, 9092, 9101)
 - **PostgreSQL**: Data storage (port 5432)
-- **Airflow**: Workflow orchestration (port 8080)
+- **Redis**: Airflow broker (internal)
+- **Airflow** (webserver + scheduler): Workflow orchestration (port 8080)
 - **Grafana**: Visualization (port 3000)
-- **API Service**: TfL data ingestion service
+- **tfl-producer**: Fetches TfL API data and publishes to Kafka topics
+- **data-consumer**: Consumes Kafka messages and writes to PostgreSQL via SQLAlchemy
 
 ## Development
 
 ### Project Structure
 ```
+├── docker-compose.yml            # Service definitions for the full stack
+├── Makefile                      # Common dev commands (setup, start, logs, ...)
 ├── requirements.txt              # Global Python dependencies
-├── docker/                       # Shared Docker configurations
-│   ├── Dockerfile.python        # Python services container
-│   └── Dockerfile.airflow        # Airflow container
+├── .env.example                  # Template for required env vars (copy to .env)
+├── docker/
+│   ├── Dockerfile.python         # Image for tfl-producer / data-consumer
+│   └── Dockerfile.airflow        # Image for Airflow webserver / scheduler
 ├── services/
-│   ├── tfl-producer/            # TfL API data producer
-│   └── data-consumer/           # Kafka consumer & database writer
-│       ├── models.py            # SQLAlchemy data models
-│       ├── database.py          # Database configuration
-│       ├── migrate.py           # Migration script
-│       ├── alembic.ini          # Alembic configuration
-│       └── alembic/             # Database migrations
+│   ├── tfl-producer/
+│   │   └── producer.py           # TfL API → Kafka producer
+│   └── data-consumer/
+│       ├── consumer.py           # Kafka → PostgreSQL consumer
+│       ├── models.py             # SQLAlchemy data models
+│       ├── database.py           # Database configuration
+│       ├── migrate.py            # Migration runner
+│       ├── alembic.ini           # Alembic configuration
+│       └── alembic/              # Database migrations
 ├── airflow/
-│   ├── dags/                    # Airflow DAGs
-│   └── airflow.cfg             # Airflow configuration
+│   ├── dags/                     # Airflow DAGs
+│   └── plugins/                  # Airflow plugins
 ├── grafana/
-│   ├── dashboards/             # Pre-built dashboards
-│   └── provisioning/           # Grafana configuration
+│   ├── dashboards/               # Pre-built dashboards
+│   └── provisioning/             # Datasource + dashboard provisioning
 └── scripts/
-    └── setup.sh              # Automated setup script
+    ├── setup.sh                  # Automated setup script
+    └── health-check.sh           # Service health diagnostics
 ```
 
 ### Data Flow
@@ -106,11 +114,28 @@ make clean         # Clean up containers and volumes
 - Test TfL API: `make test-api`
 - View Kafka topics: `make kafka-topics`
 - Database shell: `make shell-postgres`
+- **Kafka fails to start with `NodeExistsException` on broker registration**: Zookeeper has a stale broker registration persisted from a previous run. Wipe the Kafka and Zookeeper volumes and restart:
+  ```bash
+  docker compose stop kafka zookeeper
+  docker compose rm -fv kafka zookeeper
+  docker volume rm $(basename $PWD | tr A-Z a-z)_kafka-data \
+                   $(basename $PWD | tr A-Z a-z)_zookeeper-data \
+                   $(basename $PWD | tr A-Z a-z)_zookeeper-logs
+  docker compose up -d zookeeper kafka
+  ```
 
 ## API Key Setup
 
-Get your free TfL API key from [TfL API Portal](https://api-portal.tfl.gov.uk/) and add it to your `.env` file:
+`.env` is not tracked in the repo. Create one from the template, then add your TfL API key:
+
+```bash
+cp .env.example .env
+```
+
+Get your free TfL API key from the [TfL API Portal](https://api-portal.tfl.gov.uk/) and set it in `.env`:
 
 ```bash
 TFL_API_KEY=your_actual_api_key_here
 ```
+
+The other variables in `.env.example` (Airflow admin credentials, fernet key, Postgres settings) have sensible defaults for local development.
