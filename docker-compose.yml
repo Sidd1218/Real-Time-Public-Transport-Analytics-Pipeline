@@ -65,7 +65,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -86,32 +85,72 @@ services:
       timeout: 5s
       retries: 5
 
-  # Airflow Database Init
-  airflow-init:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.airflow
-    container_name: airflow-init
+  # Database initialization service - runs once and exits
+  db-init:
+    image: postgres:15
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
-      - AIRFLOW_UID=${AIRFLOW_UID}
-      - AIRFLOW__CORE__EXECUTOR=${AIRFLOW__CORE__EXECUTOR}
-      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=${AIRFLOW__DATABASE__SQL_ALCHEMY_CONN}
-      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW__CORE__FERNET_KEY}
-      - AIRFLOW__WEBSERVER__SECRET_KEY=${AIRFLOW__WEBSERVER__SECRET_KEY}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
     command: >
       bash -c "
-        airflow db init &&
-        airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin
+        echo ' Initializing databases...'
+        
+        # Check and create transport_analytics database
+        if ! PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST} -U ${POSTGRES_USER} -lqt | cut -d \\| -f 1 | grep -qw transport_analytics; then
+          echo ' Creating transport_analytics database...'
+          PGPASSWORD=${POSTGRES_PASSWORD} createdb -h ${POSTGRES_HOST} -U ${POSTGRES_USER} transport_analytics
+          echo ' transport_analytics database created'
+        else
+          echo ' transport_analytics database already exists'
+        fi
+        
+        # Check and create airflow database
+        if ! PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST} -U ${POSTGRES_USER} -lqt | cut -d \\| -f 1 | grep -qw airflow; then
+          echo ' Creating airflow database...'
+          PGPASSWORD=${POSTGRES_PASSWORD} createdb -h ${POSTGRES_HOST} -U ${POSTGRES_USER} airflow
+          echo ' airflow database created'
+        else
+          echo ' airflow database already exists'
+        fi
+        
+        echo ' Database initialization completed successfully'
       "
+    restart: "no"
+
+  # Airflow Database Init
+  airflow-init:
+    image: apache/airflow:2.7.1
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/airflow
+      - AIRFLOW__CORE__FERNET_KEY=${AIRFLOW_FERNET_KEY}
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=true
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+      - AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK=true
+      - _AIRFLOW_DB_UPGRADE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=${AIRFLOW_USER}
+      - _AIRFLOW_WWW_USER_PASSWORD=${AIRFLOW_PASSWORD}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/logs:/opt/airflow/logs
       - ./airflow/plugins:/opt/airflow/plugins
+    command: >
+      bash -c "
+        echo ' Initializing Airflow database and user...'
+        airflow db init &&
+        airflow users create --username ${AIRFLOW_USER} --firstname Admin --lastname User --role Admin --email admin@example.com --password ${AIRFLOW_PASSWORD} || echo 'User already exists'
+        echo ' Airflow initialization completed'
+      "
     restart: "no"
 
   # Airflow Webserver
